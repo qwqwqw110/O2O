@@ -18,8 +18,9 @@ dataSet2 = off_train[(off_train.date_received >= '20160515') & (off_train.date_r
 
 feature3 = off_train[(off_train.date_received >= '20160315') & (off_train.date_received <= '20160630')]
 dataSet3 = off_test
-
 '''
+
+
 import pandas as pd
 import numpy as np
 from datetime import date
@@ -27,9 +28,9 @@ import datetime as dt
 import os
 
 # 源数据路径
-DataPath = "F:\Learning\competitions\TianChi\o2o\MyCode\data"
+DataPath = "F:\Learning\competitions\TianChi\o2o\O2OProject\data"
 # 预处理后数据存放路径
-FeaturePath = "F:\Learning\competitions\TianChi\o2o\MyCode\dataFeature"
+FeaturePath = "F:\Learning\competitions\TianChi\o2o\O2OProject\dataFeature"
 
 off_train = pd.read_csv(os.path.join(DataPath,'ccf_offline_stage1_train.csv'),header=0,keep_default_na=False)
 off_train.columns=['user_id','merchant_id','coupon_id','discount_rate','distance','date_received','date']
@@ -179,6 +180,7 @@ def GetOtherFeature(dataset):
     return other_feature
 
 
+# 打折率
 def calc_discount_rate(s):
     s = str(s)
     s = s.split(':')
@@ -188,6 +190,7 @@ def calc_discount_rate(s):
         return 1.0 - float(s[1]) / float(s[0])
 
 
+# 满减中的满多少
 def get_discount_man(s):
     s = str(s)
     s = s.split(':')
@@ -197,6 +200,7 @@ def get_discount_man(s):
         return int(s[0])
 
 
+# 满减中的减多少
 def get_discount_jian(s):
     s = str(s)
     s = s.split(':')
@@ -206,6 +210,7 @@ def get_discount_jian(s):
         return int(s[1])
 
 
+# 返回0代表打折，返回1 代表满减
 def is_man_jian(s):
     s = str(s)
     s = s.split(':')
@@ -221,11 +226,12 @@ def GetCouponRelatedFeature(dataset, feature):
     t = feature[feature['date'] != 'null']['date'].unique()
     t = max(t)
 
+    # 收到优惠券时间转化为周几
     dataset['day_of_week'] = dataset.date_received.astype('str').apply(
         lambda x: date(int(x[0:4]), int(x[4:6]), int(x[6:8])).weekday() + 1)
-    # 显示时间是几月
+    # 收到优惠券时间转化为几号
     dataset['day_of_month'] = dataset.date_received.astype('str').apply(lambda x: int(x[6:8]))
-    # 显示时期和截止日之间的天数
+    # 显示时期和截止日之间的天数（I can not understand???????）
     dataset['days_distance'] = dataset.date_received.astype('str').apply(
         lambda x: (date(int(x[0:4]), int(x[4:6]), int(x[6:8])) - date(int(t[0:4]), int(t[4:6]), int(t[6:8]))).days)
     # 显示满了多少钱后开始减
@@ -238,7 +244,7 @@ def GetCouponRelatedFeature(dataset, feature):
     dataset['discount_rate'] = dataset.discount_rate.apply(calc_discount_rate)
     d = dataset[['coupon_id']]
     d['coupon_count'] = 1
-    # 显示每一种优惠券的数量
+    # 每一种优惠券被领取的次数
     d = d.groupby('coupon_id').agg('sum').reset_index()
     dataset = pd.merge(dataset, d, on='coupon_id', how='left')
     return dataset
@@ -251,18 +257,18 @@ def GetMerchantRelatedFeature(feature):
     # 删除重复行数据
     t.drop_duplicates(inplace=True)
 
-    # 卖出的商品
+    # 卖出商品的商家
     t1 = merchant[merchant.date != 'null'][['merchant_id']].copy()
     t1['total_sales'] = 1
-    # 每个商品的销售数量
+    # 卖出的次数
     t1 = t1.groupby('merchant_id').agg('sum').reset_index()
 
-    # 使用了优惠券消费的商品，正样本
+    # 使用coupon卖出 商品的商家核销次数
     t2 = merchant[(merchant.date != 'null') & (merchant.coupon_id != 'null')][['merchant_id']].copy()
     t2['sales_use_coupon'] = 1
     t2 = t2.groupby('merchant_id').agg('sum').reset_index()
 
-    # 商品的优惠券的总数量
+    # 商家的优惠券的总数量
     t3 = merchant[merchant.coupon_id != 'null'][['merchant_id']].copy()
     t3['total_coupon'] = 1
     t3 = t3.groupby('merchant_id').agg('sum').reset_index()
@@ -302,10 +308,10 @@ def GetMerchantRelatedFeature(feature):
 
     # 将数据中的NaN用0来替换
     merchant_feature.sales_use_coupon = merchant_feature.sales_use_coupon.replace(np.nan, 0)
-    # 优惠券的使用率
+    # 优惠券的使用率（使用的优惠券占所有领取优惠券的比例）
     merchant_feature['merchant_coupon_transfer_rate'] = merchant_feature.sales_use_coupon.astype(
         'float') / merchant_feature.total_coupon
-    # 即卖出商品中使用优惠券的占比
+    # 即卖出商品中使用优惠券的占比（使用优惠券卖出的商品占所有卖出商品的比例）
     merchant_feature['coupon_rate'] = merchant_feature.sales_use_coupon.astype('float') / merchant_feature.total_sales
     # 将数据中的NaN用0来替换
     merchant_feature.total_coupon = merchant_feature.total_coupon.replace(np.nan, 0)
@@ -319,6 +325,7 @@ def get_user_date_datereceived_gap(s):
                                                                         int(s[1][6:8]))).days
 
 
+# 提取用户相关Feature
 def GetUserRelatedFeature(feature):
     # for dataset3
     user = feature[['user_id', 'merchant_id', 'coupon_id', 'discount_rate', 'distance', 'date_received', 'date']].copy()
@@ -326,7 +333,7 @@ def GetUserRelatedFeature(feature):
     t = user[['user_id']].copy()
     t.drop_duplicates(inplace=True)
 
-    # 客户一共买的商品
+    # 客户领取不同优惠券的数量
     t1 = user[user.date != 'null'][['user_id', 'merchant_id']].copy()
     t1.drop_duplicates(inplace=True)
     t1.merchant_id = 1
@@ -358,7 +365,7 @@ def GetUserRelatedFeature(feature):
     t7['buy_use_coupon'] = 1
     t7 = t7.groupby('user_id').agg('sum').reset_index()
 
-    # 客户使购买的总次数
+    # 客户使购买的总次数（使用优惠券+不使用优惠券）
     t8 = user[user.date != 'null'][['user_id']]
     t8['buy_total'] = 1
     t8 = t8.groupby('user_id').agg('sum').reset_index()
@@ -397,10 +404,14 @@ def GetUserRelatedFeature(feature):
     user_feature = pd.merge(user_feature, t13, on='user_id', how='left')
     user_feature.count_merchant = user_feature.count_merchant.replace(np.nan, 0)
     user_feature.buy_use_coupon = user_feature.buy_use_coupon.replace(np.nan, 0)
+
+    # 使用优惠券消费 与 不实用优惠券消费之比
     user_feature['buy_use_coupon_rate'] = user_feature.buy_use_coupon.astype('float') / user_feature.buy_total.astype(
         'float')
+    # 核销的优惠券 与 领取的所有优惠券之比
     user_feature['user_coupon_transfer_rate'] = user_feature.buy_use_coupon.astype(
         'float') / user_feature.coupon_received.astype('float')
+
     user_feature.buy_total = user_feature.buy_total.replace(np.nan, 0)
     user_feature.coupon_received = user_feature.coupon_received.replace(np.nan, 0)
     return user_feature
@@ -431,7 +442,7 @@ def GetUserAndMerchantRelatedFeature(feature):
     t2 = t2.groupby(['user_id', 'merchant_id']).agg('sum').reset_index()
     t2.drop_duplicates(inplace=True)
 
-    # 一个客户在一个商家浏览的次数
+    # 一个客户在一个商家浏览的次数（有优惠券买+有优惠券没买+没优惠券买）
     t3 = feature[['user_id', 'merchant_id']]
     t3['user_merchant_any'] = 1
     t3 = t3.groupby(['user_id', 'merchant_id']).agg('sum').reset_index()
@@ -449,69 +460,84 @@ def GetUserAndMerchantRelatedFeature(feature):
     user_merchant = pd.merge(user_merchant, t2, on=['user_id', 'merchant_id'], how='left')
     user_merchant = pd.merge(user_merchant, t3, on=['user_id', 'merchant_id'], how='left')
     user_merchant = pd.merge(user_merchant, t4, on=['user_id', 'merchant_id'], how='left')
+    # 用0代替np.nan
     user_merchant.user_merchant_buy_use_coupon = user_merchant.user_merchant_buy_use_coupon.replace(np.nan, 0)
     user_merchant.user_merchant_buy_common = user_merchant.user_merchant_buy_common.replace(np.nan, 0)
+    # 用户使用优惠券在一个商家购买次数 / 用户在一个商家领取的优惠券总数
     user_merchant['user_merchant_coupon_transfer_rate'] = user_merchant.user_merchant_buy_use_coupon.astype(
         'float') / user_merchant.user_merchant_received.astype('float')
+    # 用户使用优惠券在一个商家购买次数 / 用户在一个商家购买商品总次数
     user_merchant['user_merchant_coupon_buy_rate'] = user_merchant.user_merchant_buy_use_coupon.astype(
         'float') / user_merchant.user_merchant_buy_total.astype('float')
+    # 用户在商家购买商品总次数 / 用户浏览商家总次数
     user_merchant['user_merchant_rate'] = user_merchant.user_merchant_buy_total.astype(
         'float') / user_merchant.user_merchant_any.astype('float')
+    # 用户在一个商家没有使用优惠券购买的次数 / 用户浏览商家总次数
     user_merchant['user_merchant_common_buy_rate'] = user_merchant.user_merchant_buy_common.astype(
         'float') / user_merchant.user_merchant_buy_total.astype('float')
+
     return user_merchant
 
 
 def get_label(s):
     s = s.split(':')
     if s[0] == 'null':
-        return 0
+        return 0  # 未在15天内核销
     # 15 天内是否核销
     elif (date(int(s[0][0:4]), int(s[0][4:6]), int(s[0][6:8])) - date(int(s[1][0:4]), int(s[1][4:6]),
                                                                       int(s[1][6:8]))).days <= 15:
-        return 1
+        return 1  # 在15天内核销
     else:
-        return -1
+        return -1  # 超过15天才核销
 
 
 def DataProcess(dataset, feature, TrainFlag):
-    other_feature = GetOtherFeature(dataset)
-    merchant = GetMerchantRelatedFeature(feature)
-    user = GetUserRelatedFeature(feature)
-    user_merchant = GetUserAndMerchantRelatedFeature(feature)
-    coupon = GetCouponRelatedFeature(dataset, feature)
+
+    other_feature = GetOtherFeature(dataset)  # 提取其他Feature
+    merchant = GetMerchantRelatedFeature(feature)  # 提取商家相关Feature
+    user = GetUserRelatedFeature(feature)  # 提取用户相关Feature
+    user_merchant = GetUserAndMerchantRelatedFeature(feature)  # 提取用户-商家交互Feature
+    coupon = GetCouponRelatedFeature(dataset, feature)  # 提取优惠券相关Feature
 
     dataset = pd.merge(coupon, merchant, on='merchant_id', how='left')
     dataset = pd.merge(dataset, user, on='user_id', how='left')
     dataset = pd.merge(dataset, user_merchant, on=['user_id', 'merchant_id'], how='left')
     dataset = pd.merge(dataset, other_feature, on=['user_id', 'coupon_id', 'date_received'], how='left')
+    # 删去重复的
     dataset.drop_duplicates(inplace=True)
 
     dataset.user_merchant_buy_total = dataset.user_merchant_buy_total.replace(np.nan, 0)
     dataset.user_merchant_any = dataset.user_merchant_any.replace(np.nan, 0)
     dataset.user_merchant_received = dataset.user_merchant_received.replace(np.nan, 0)
+    # 收到优惠券日期是否为周末
     dataset['is_weekend'] = dataset.day_of_week.apply(lambda x: 1 if x in (6, 7) else 0)
+    # 对周几进行one-hot编码
     weekday_dummies = pd.get_dummies(dataset.day_of_week)
+    # 设置one-hot编码的列名为weekday1,weekday2......
     weekday_dummies.columns = ['weekday' + str(i + 1) for i in range(weekday_dummies.shape[1])]
+    # 以列为轴将数据集进行合并
     dataset = pd.concat([dataset, weekday_dummies], axis=1)
-    if TrainFlag:
-        dataset['date'] = dataset['date'].fillna('null')
+
+    if TrainFlag:  # 可以得到是否核销的标签
+        dataset['date'] = dataset['date'].fillna('null')  # 用null填充data字段中的缺失
         dataset['label'] = dataset.date.astype('str') + ':' + dataset.date_received.astype('str')
         dataset.label = dataset.label.apply(get_label)
         dataset.drop(['merchant_id', 'day_of_week', 'date', 'date_received', 'coupon_count'], axis=1, inplace=True)
-    else:
+    else:   # 不能得到是否核销的标签
         dataset.drop(['merchant_id', 'day_of_week', 'coupon_count'], axis=1, inplace=True)
+
     dataset = dataset.replace('null', np.nan)
     return dataset
 
 
-ProcessDataSet1 = DataProcess(dataset1,feature1,True)
-ProcessDataSet1.to_csv(os.path.join(FeaturePath,'ProcessDataSet1.csv'),index=None)
+ProcessDataSet1 = DataProcess(dataset1, feature1, True)
+ProcessDataSet1.to_csv(os.path.join(FeaturePath, 'ProcessDataSet1.csv'), index=None)
 print('---------------ProcessDataSet1 done-------------------')
 
-ProcessDataSet2 = DataProcess(dataset2,feature2,True)
-ProcessDataSet2.to_csv(os.path.join(FeaturePath,'ProcessDataSet2.csv'),index=None)
+ProcessDataSet2 = DataProcess(dataset2, feature2, True)
+ProcessDataSet2.to_csv(os.path.join(FeaturePath, 'ProcessDataSet2.csv'), index=None)
 print('---------------ProcessDataSet2 done-------------------')
-ProcessDataSet3 = DataProcess(dataset3,feature3,False)
-ProcessDataSet3.to_csv(os.path.join(FeaturePath,'ProcessDataSet3.csv'),index=None)
+
+ProcessDataSet3 = DataProcess(dataset3, feature3, False)
+ProcessDataSet3.to_csv(os.path.join(FeaturePath, 'ProcessDataSet3.csv'), index=None)
 print('---------------ProcessDataSet3 done-------------------')
